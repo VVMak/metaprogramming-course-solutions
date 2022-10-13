@@ -21,7 +21,7 @@ struct ValueWrapper<T, special_value, special_value> {
   template<T other_value>
   ValueWrapper(const ValueWrapper<T, other_value, special_value>& other) : ValueWrapper(other.GetValue()) {}
 
-  constexpr T GetValue() const { return value_; }
+  T GetValue() const { return value_; }
 private:
   T value_;
 };
@@ -31,16 +31,9 @@ inline constexpr T MakeValue(T value) {
   return (current == special_value ? special_value : value);
 }
 
-// template<typename T, T current, T special_value, T static_value>
-// inline constexpr ValueWrapper<T, MakeValue<T, current, special_value>(static_value), special_value> MakeValueWrapper(T dynamic_value) {
-//   return (current == special_value 
-//           ? ValueWrapper<T, special_value, special_value>(dynamic_value)
-//           : ValueWrapper<T, static_value, special_value>());
-// }
-
 template<typename T, T current, T special_value, T static_value>
 struct MakeValueWrapper{
-  ValueWrapper<T, static_value, special_value> operator()(T /* dynamic_value */) const {
+  constexpr ValueWrapper<T, static_value, special_value> operator()(T /* dynamic_value */) const {
     return {};
   }
 };
@@ -66,11 +59,6 @@ template<std::ptrdiff_t stride>
 inline constexpr std::ptrdiff_t MakeStride(std::ptrdiff_t value) {
   return MakeValue<std::ptrdiff_t, stride, dynamic_stride>(value);
 }
-
-// template<std::size_t extent, std::size_t static_value>
-// using MakeExtentWrapper = MakeValueWrapper<std::size_t, extent, std::dynamic_extent, static_value>;
-// template<std::ptrdiff_t stride, std::ptrdiff_t static_value>
-// using MakeStrideWrapper = MakeValueWrapper<std::ptrdiff_t, stride, dynamic_stride, static_value>;
 
 } // namespace
 
@@ -141,7 +129,7 @@ public:
 
   using reverse_iterator = std::reverse_iterator<iterator>;
 
-  Slice() requires (extent == std::dynamic_extent || extent == 0) {}
+  constexpr Slice() requires (extent == std::dynamic_extent || extent == 0) {}
 
   template<typename U>
   requires requires(U container) {
@@ -158,14 +146,14 @@ public:
     (std::same_as<T, U> || std::same_as<T, const U>)
     && (extent == other_extent || extent == std::dynamic_extent)
     && (stride == other_stride || stride == dynamic_stride))
-  Slice(const Slice<U, other_extent, other_stride>&);
+  constexpr Slice(const Slice<U, other_extent, other_stride>&);
 
-  Slice(const Slice<T, extent, stride>&) = default;
+  constexpr Slice(const Slice<T, extent, stride>&) = default;
 
   template<std::contiguous_iterator It>
   explicit Slice(It first, std::size_t count, std::ptrdiff_t skip);
 
-  Slice<T, extent, stride>& operator=(const Slice<T, extent, stride>& other) = default;
+  constexpr Slice<T, extent, stride>& operator=(const Slice<T, extent, stride>& other) = default;
   
   // Data, Size, Stride, begin, end, casts, etc...
 
@@ -207,7 +195,7 @@ public:
     Skip(std::ptrdiff_t skip) const;
 
   template<std::ptrdiff_t skip>
-  Slice<T, MakeExtent<extent>((extent + skip - 1) / skip), MakeStride<stride>(stride * skip)>
+  Slice<T, MakeExtent<extent>((extent - 1) / skip + 1), MakeStride<stride>(stride * skip)>
     Skip() const;
 
   Slice<T, extent, stride>::iterator begin() const;
@@ -220,7 +208,7 @@ public:
 
   T& operator[] (int) const;
 
-  ~Slice() noexcept = default;
+  constexpr ~Slice() noexcept = default;
 
 protected:
   pointer data_ = nullptr;
@@ -229,7 +217,7 @@ protected:
 
   constexpr StrideWrapper<stride> GetStride() const;
 
-  constexpr pointer GetPtr(int i) const;
+  pointer GetPtr(int i) const;
 
   template<typename U, std::size_t other_extent, std::ptrdiff_t other_stride>
   friend class Slice;
@@ -276,7 +264,7 @@ requires(
   (std::same_as<T, U> || std::same_as<T, const U>)
   && (extent == other_extent || extent == std::dynamic_extent)
   && (stride == other_stride || stride == dynamic_stride))
-Slice<T, extent, stride>::Slice(const Slice<U, other_extent, other_stride>& other)
+constexpr Slice<T, extent, stride>::Slice(const Slice<U, other_extent, other_stride>& other)
   : ExtentWrapper<extent>(other.GetExtent())
   , StrideWrapper<stride>(other.GetStride())
   , data_(other.Data()) {
@@ -292,7 +280,7 @@ Slice<T, extent, stride>::Slice(It first, std::size_t count, std::ptrdiff_t skip
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride,
           std::equality_comparable_with<T> U, std::size_t other_extent, std::ptrdiff_t other_stride>
-bool operator==(const Slice<T, extent, stride>& first, const Slice<U, other_extent, other_stride>& second) {
+constexpr bool operator==(const Slice<T, extent, stride>& first, const Slice<U, other_extent, other_stride>& second) {
   if (first.Size() != second.Size()) {
     return false;
   }
@@ -311,38 +299,38 @@ typename Slice<T, extent, stride>::pointer Slice<T, extent, stride>::Data() cons
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 constexpr std::size_t Slice<T, extent, stride>::Size() const {
-  return GetExtent().GetValue();
+  return ExtentWrapper<extent>::GetValue();
 }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 constexpr std::ptrdiff_t Slice<T, extent, stride>::Stride() const {
-  return GetStride().GetValue();
+  return StrideWrapper<stride>::GetValue();
 }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 Slice<T, std::dynamic_extent, stride>
   Slice<T, extent, stride>::First(std::size_t count) const requires(extent == std::dynamic_extent) {
-    return {Data(), ExtentWrapper<std::dynamic_extent>(count), GetStride()};
+    return {Data(), ExtentWrapper<std::dynamic_extent>{count}, GetStride()};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 template<std::size_t count>
 Slice<T, count, stride>
   Slice<T, extent, stride>::First() const {
-    return {Data(), ExtentWrapper<count>(), GetStride()};
+    return {Data(), ExtentWrapper<count>{}, GetStride()};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 Slice<T, std::dynamic_extent, stride>
   Slice<T, extent, stride>::Last(std::size_t count) const requires(extent == std::dynamic_extent) {
-    return {GetPtr(Size() - count), ExtentWrapper<std::dynamic_extent>(count), GetStride()};
+    return {GetPtr(Size() - count), ExtentWrapper<std::dynamic_extent>{count}, GetStride()};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 template<std::size_t count>
 Slice<T, count, stride>
   Slice<T, extent, stride>::Last() const {
-    return {GetPtr(Size() - count), ExtentWrapper<count>(), GetStride()};
+    return {GetPtr(Size() - count), ExtentWrapper<count>{}, GetStride()};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
@@ -355,7 +343,7 @@ template<typename T, std::size_t extent, std::ptrdiff_t stride>
 template<std::size_t count>
 Slice<T, MakeExtent<extent>(extent - count), stride>
   Slice<T, extent, stride>::DropFirst() const {
-    return {GetPtr(count), MakeExtentWrapper<extent - count>()(Size() - count), GetStride()};
+    return {GetPtr(count), MakeExtentWrapper<extent - count>{}(Size() - count), GetStride()};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
@@ -368,21 +356,21 @@ template<typename T, std::size_t extent, std::ptrdiff_t stride>
 template<std::size_t count>
 Slice<T, MakeExtent<extent>(extent - count), stride>
   Slice<T, extent, stride>::DropLast() const {
-    return {Data(), MakeExtentWrapper<extent - count>()(Size() - count), GetStride()};
+    return {Data(), MakeExtentWrapper<extent - count>{}(Size() - count), GetStride()};
   }
 
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 Slice<T, std::dynamic_extent, dynamic_stride>
   Slice<T, extent, stride>::Skip(std::ptrdiff_t skip) const {
-    return {Data(), ExtentWrapper<std::dynamic_extent>((Size() + skip - 1) / skip), StrideWrapper<dynamic_stride>(skip * Stride())};
+    return {Data(), ExtentWrapper<std::dynamic_extent>{(Size() + skip - 1) / skip}, StrideWrapper<dynamic_stride>{skip * Stride()}};
   }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
 template<std::ptrdiff_t skip>
-Slice<T, MakeExtent<extent>((extent + skip - 1) / skip), MakeStride<stride>(stride * skip)>
+Slice<T, MakeExtent<extent>((extent - 1) / skip + 1), MakeStride<stride>(stride * skip)>
   Slice<T, extent, stride>::Skip() const {
-    return {Data(), MakeExtentWrapper<(extent + skip - 1) / skip>()((Size() + skip - 1) / skip), MakeStrideWrapper<stride * skip>()(Stride() * skip)};
+    return {Data(), MakeExtentWrapper<(extent - 1) / skip + 1>{}((Size() + skip - 1) / skip), MakeStrideWrapper<stride * skip>{}(Stride() * skip)};
   }
 
 
@@ -433,6 +421,6 @@ constexpr StrideWrapper<stride> Slice<T, extent, stride>::GetStride() const {
 }
 
 template<typename T, std::size_t extent, std::ptrdiff_t stride>
-constexpr typename Slice<T, extent, stride>::pointer Slice<T, extent, stride>::GetPtr(int i) const {
+typename Slice<T, extent, stride>::pointer Slice<T, extent, stride>::GetPtr(int i) const {
   return Data() + Stride() * i;
 }
