@@ -3,9 +3,6 @@
 #include <optional>
 
 
-template<typename>
-constexpr bool depFalse = false;
-
 template <class From, auto target>
 struct Mapping;
 
