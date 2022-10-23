@@ -283,6 +283,34 @@ template<TypeList... TLs>
 struct Zip : Map<ToTuple, details::ZipImpl<FromTuple<type_tuples::TTuple<TLs...>>>> {};
 
 
+namespace details {
+  template<template<typename, typename> typename EQ, TypeList TL>
+  struct SkipEqual : Nil {};
+  template<template<typename, typename> typename EQ, TypeSequence TL>
+  requires(!EQ<typename TL::Head, typename TL::Tail::Head>::Value)
+  struct SkipEqual<EQ, TL> : TL::Tail {};
+  template<template<typename, typename> typename EQ, TypeSequence TL>
+  requires(EQ<typename TL::Head, typename TL::Tail::Head>::Value)
+  struct SkipEqual<EQ, TL> : SkipEqual<EQ, typename TL::Tail> {};
+
+  template<template<typename, typename> typename EQ, TypeList TL>
+  struct GetEqual : TL {};
+  template<template<typename, typename> typename EQ, TypeSequence TL>
+  requires(!EQ<typename TL::Head, typename TL::Tail::Head>::Value)
+  struct GetEqual<EQ, TL> : Cons<typename TL::Head, Nil> {};
+  template<template<typename, typename> typename EQ, TypeSequence TL>
+  requires(EQ<typename TL::Head, typename TL::Tail::Head>::Value)
+  struct GetEqual<EQ, TL> : Cons<typename TL::Head, GetEqual<EQ, typename TL::Tail>> {};
+}
+
+template<template<typename, typename> typename EQ, TypeList TL>
+struct GroupBy : Nil {};
+
+template<template<typename, typename> typename EQ, TypeSequence TL>
+struct GroupBy<EQ, TL> : Cons<details::GetEqual<EQ, TL>, Nil> {
+  using Tail = GroupBy<EQ, details::SkipEqual<EQ, TL>>;
+};
+
 // // не понимаю, почему не работает
 // namespace details {
 //   template<TypeSequence TL>
