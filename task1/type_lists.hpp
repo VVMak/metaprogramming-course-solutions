@@ -34,45 +34,18 @@ struct Cons {
   using Tail = TL;
 };
 
-namespace details {
-  template<typename T>
-  struct FromTupleImpl;
-
-  template<typename... Args>
-  struct PackToList {
-    using Head = Nil;
-    using Tail = Nil;
-  };
-  
+template<type_tuples::TypeTuple TT>
+struct FromTuple {
   template<typename Head, typename... Tail>
-  struct PackToList<Head, Tail...> : Cons<Head, PackToList<Tail...>> {};
-  
-  template<>
-  struct PackToList<> : Nil {};
-
-  template<typename T, typename... Ts>
-  struct FromTupleImpl<type_tuples::TTuple<T, Ts...>> : PackToList<T, Ts...> {};
+  static Head GetHead(type_tuples::TTuple<Head, Tail...>);
+  template<typename Head, typename... Tail>
+  static type_tuples::TTuple<Tail...> GetTail(type_tuples::TTuple<Head, Tail...>);
+  using Head = decltype(GetHead(std::declval<TT>()));
+  using Tail = FromTuple<decltype(GetTail(std::declval<TT>()))>;
 };
 
-namespace helpers {
-  namespace details {
-    template<typename Head, type_tuples::TypeTuple TT>
-    struct PushFrontImpl {
-      using Type = type_tuples::TTuple<>;
-    };
-
-    template<typename Head, typename... Tail>
-    struct PushFrontImpl<Head, type_tuples::TTuple<Tail...>> {
-      using Type = type_tuples::TTuple<Head, Tail...>;
-    };
-  }
-  
-  template<typename Head, type_tuples::TypeTuple TT>
-  using PushFront = typename details::PushFrontImpl<Head, TT>::Type;
-}
-
-template<type_tuples::TypeTuple TT>
-using FromTuple = details::FromTupleImpl<TT>;
+template<>
+struct FromTuple<type_tuples::TTuple<>> : Nil {};
 
 
 namespace details {
@@ -83,7 +56,7 @@ namespace details {
 
   template<TypeSequence TL>
   struct ToTuple<TL> {
-    using Type = helpers::PushFront<typename TL::Head, typename ToTuple<typename TL::Tail>::Type>;
+    using Type = type_tuples::PushFront<typename TL::Head, typename ToTuple<typename TL::Tail>::Type>;
   };
 }
 
@@ -91,16 +64,11 @@ template<TypeList TL>
 using ToTuple = typename details::ToTuple<TL>::Type;
 
 
-namespace details {
-  template<typename T>
-  struct RepeatImpl{
-    using Head = T;
-    using Tail = RepeatImpl<Head>;
-  };
-};
-
 template<typename T>
-using Repeat = details::RepeatImpl<T>;
+struct Repeat{
+  using Head = T;
+  using Tail = Repeat<Head>;
+};
 
 template<std::size_t N, TypeList TL>
 struct Take : Cons<typename TL::Head, Take<N - 1, typename TL::Tail>> {};
@@ -157,36 +125,16 @@ struct Map : Cons<F<typename TL::Head>, Nil> {
 template<template<typename> typename F, Empty TL>
 struct Map<F, TL> : Nil {};
 
-namespace helpers {
-  namespace details {
-    template<bool b, typename T1, typename T2>
-    struct TernarImpl {
-      using Type = T1;
-    };
-    template<typename T1, typename T2>
-    struct TernarImpl<false, T1, T2> {
-      using Type = T2;
-    };
-  }
-  template<bool b, typename T1, typename T2>
-  using Ternar = typename details::TernarImpl<b, T1, T2>::Type;
-}
 
 template<template<typename> typename P, TypeList TL>
-struct Filter;
-
-namespace details {
-  template<template<typename> typename P, TypeList TL, bool>
-  struct FilterImpl : Cons<typename TL::Head, Nil> {
-    using Tail = Filter<P, typename TL::Tail>;
-  };
-
-  template<template<typename> typename P, TypeList TL>
-  struct FilterImpl<P, TL, false> : Filter<P, typename TL::Tail> {};
-}
+struct Filter : Filter<P, typename TL::Tail> {};
 
 template<template<typename> typename P, TypeList TL>
-struct Filter : details::FilterImpl<P, TL, P<typename TL::Head>::Value> {};
+requires(P<typename TL::Head>::Value)
+struct Filter<P, TL> {
+  using Head = typename TL::Head;
+  using Tail = Filter<P, typename TL::Tail>;
+};
 
 template<template<typename> typename P, Empty TL>
 struct Filter<P, TL> : Nil {};
@@ -279,8 +227,17 @@ namespace details {
   struct ZipImpl<TL> : Nil {};
 }
 
+// template<TypeList... TLs>
+// struct Zip : Map<ToTuple, details::ZipImpl<FromTuple<type_tuples::TTuple<TLs...>>>> {};
+
 template<TypeList... TLs>
-struct Zip : Map<ToTuple, details::ZipImpl<FromTuple<type_tuples::TTuple<TLs...>>>> {};
+struct Zip : Nil {};
+
+template<TypeSequence TLHead, TypeSequence... TLTail>
+struct Zip<TLHead, TLTail...> {
+  using Head = type_tuples::TTuple<typename TLHead::Head, typename TLTail::Head...>;
+  using Tail = Zip<typename TLHead::Tail, typename TLTail::Tail...>;
+};
 
 
 namespace details {
