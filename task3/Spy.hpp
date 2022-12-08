@@ -26,13 +26,13 @@ class BaseLogger {
   }
 };
 
-class ClonableBaseLogger: public virtual BaseLogger {
+class Clonable {
  public:
-  virtual std::shared_ptr<BaseLogger> Clone() = 0;
+  virtual std::unique_ptr<BaseLogger> Clone() = 0;
 };
 
 template <std::invocable<unsigned int> Func> requires std::move_constructible<Func>
-class ConcreteLogger : public virtual BaseLogger {
+class ConcreteLogger : public BaseLogger {
  public:
   ConcreteLogger() = default;
   ConcreteLogger(const ConcreteLogger&) = default;
@@ -48,15 +48,15 @@ class ConcreteLogger : public virtual BaseLogger {
 };
 
 template <std::invocable<unsigned int> Func> requires std::copy_constructible<Func>
-class ClonableConcreteLogger : public ConcreteLogger<Func>, public ClonableBaseLogger {
+class ClonableConcreteLogger : public ConcreteLogger<Func>, public Clonable {
  public:
   ClonableConcreteLogger() : ConcreteLogger<Func>() {}
   ClonableConcreteLogger(const ClonableConcreteLogger& other) : ConcreteLogger<Func>(other) {}
   ClonableConcreteLogger(ClonableConcreteLogger&& other) : ConcreteLogger<Func>(std::move(other)) {}
   ClonableConcreteLogger(const Func& func, unsigned int counter = 0) 
       : ConcreteLogger<Func>(Func(func), counter) {}
-  std::shared_ptr<BaseLogger> Clone() override {
-    return std::make_shared<ClonableConcreteLogger<Func>>(ConcreteLogger<Func>::func_);
+  std::unique_ptr<BaseLogger> Clone() override {
+    return std::make_unique<ClonableConcreteLogger<Func>>(ConcreteLogger<Func>::func_);
   }
   ~ClonableConcreteLogger() override {}
 };
@@ -68,7 +68,7 @@ class Spy {
 private:
   T value_;
   // Allocator allocator_;
-  std::shared_ptr<BaseLogger> logger_ptr_ = nullptr;
+  std::unique_ptr<BaseLogger> logger_ptr_ = nullptr;
 public:
   explicit Spy(T&& value /* , const Allocator& alloc = Allocator()*/ ) : value_(std::forward<T>(value)) {}
 
@@ -79,9 +79,9 @@ public:
     if (logger_ptr_) {
       logger_ptr_->Add();
     }
-    auto deleter = [logger_ptr = this->logger_ptr_](T* /* ptr */) {
-      if (logger_ptr) {
-        logger_ptr->Log();
+    auto deleter = [this](T* /* ptr */) {
+      if (this->logger_ptr_) {
+        this->logger_ptr_->Log();
       }
     };
     return std::unique_ptr<T, decltype(deleter)>(&value_, deleter); 
@@ -106,7 +106,7 @@ public:
   Spy<T>& operator=(Spy<T>&& other) requires std::movable<T> {
     if (this == &other) { return (*this); }
     value_ = std::move(other.value_);
-    logger_ptr_ = std::exchange(other.logger_ptr_, std::shared_ptr<BaseLogger>());
+    logger_ptr_ = std::exchange(other.logger_ptr_, nullptr);
     return (*this);
   }
   Spy<T>& operator=(const Spy<T>& other) requires std::copyable<T> {
@@ -129,15 +129,15 @@ public:
 
   template <std::invocable<unsigned int> Logger> requires std::move_constructible<Logger> && std::movable<T> && (!std::copyable<T>)
   void setLogger(Logger&& logger) {
-    logger_ptr_ = std::make_shared<ConcreteLogger<Logger>>(std::forward<Logger>(logger));
+    logger_ptr_ = std::make_unique<ConcreteLogger<Logger>>(std::forward<Logger>(logger));
   }
 
   template <std::invocable<unsigned int> Logger> requires std::copy_constructible<Logger> && std::copyable<T>
   void setLogger(Logger&& logger) {
-    logger_ptr_ = std::make_shared<ClonableConcreteLogger<Logger>>(logger);
+    logger_ptr_ = std::make_unique<ClonableConcreteLogger<Logger>>(logger);
   }
  private:
-  inline std::shared_ptr<BaseLogger> CloneLogger() const requires std::copyable<T> {
-    return (logger_ptr_ ? dynamic_cast<ClonableBaseLogger*>(logger_ptr_.get())->Clone() : std::shared_ptr<BaseLogger>());
+  inline std::unique_ptr<BaseLogger> CloneLogger() const requires std::copyable<T> {
+    return (logger_ptr_ ? dynamic_cast<Clonable*>(logger_ptr_.get())->Clone() : nullptr);
   }
 };
