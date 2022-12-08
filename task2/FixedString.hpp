@@ -10,6 +10,9 @@ struct FixedString {
     for (std::size_t i = 0; i < length; ++i) {
       impl[i] = string[i];
     }
+    for (std::size_t i = length; i < max_length; ++i) {
+      impl[i] = '\0';
+    }
   }
   constexpr operator std::string_view() const { return std::string_view(impl, length); }
 
