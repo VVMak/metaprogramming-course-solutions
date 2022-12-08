@@ -1,12 +1,27 @@
 #pragma once
 
+#include <string>
 
-template<size_t max_length>
+constexpr std::size_t LENGTH = 256;
+
+template<std::size_t max_length>
 struct FixedString {
-  FixedString(const char* string, size_t length);
-  operator std::string_view() const;
+  constexpr FixedString(const char* string, std::size_t length) : length(length) {
+    for (std::size_t i = 0; i < length; ++i) {
+      impl[i] = string[i];
+    }
+    for (std::size_t i = length; i < max_length; ++i) {
+      impl[i] = '\0';
+    }
+  }
+  constexpr operator std::string_view() const { return std::string_view(impl, length); }
 
-  // std::string impl; ???
+  char impl[max_length];
+  std::size_t length;
 };
 
-// operator ""_cstr ?
+template<typename CharT, CharT... Cs>
+constexpr FixedString<LENGTH> operator ""_cstr() {
+  constexpr char str[] = {Cs...};
+  return FixedString<LENGTH>(str, sizeof...(Cs));
+} 
